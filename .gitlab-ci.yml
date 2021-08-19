@@ -1,0 +1,69 @@
+# Copyright 2020 Google LLC
+# 
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# 
+#     https://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+stages:
+#- vet
+- prepare
+- read
+- validate
+
+variables:
+  USER: root
+  KUBECONFIG: kubeconfig
+
+# See the README.md file for more information
+#.vet: &vet_definition
+#  stage: vet
+#  image: gcr.io/config-management-release/nomos:v1.3.0-rc.7
+#  script:
+#  - sh generate_config.sh
+#  - nomos version
+#  - nomos status
+#  - nomos vet
+#
+#Vet staging:
+#  <<: *vet_definition
+#  tags:
+#  - cluster:staging
+
+Prepare:
+  stage: prepare
+  image: gcr.io/config-management-release/nomos:v1.3.0-rc.7
+  script:
+  - sh generate_config.sh
+  - nomos hydrate --path . --output ./hydrated-configs
+  artifacts:
+    paths:
+    - hydrated-configs/
+    expire_in: 1 hour
+
+Read YAML:
+  stage: read
+  image:
+    name: gcr.io/kpt-functions/read-yaml
+    entrypoint: ["/bin/sh", "-c"]
+  script:
+  - /usr/local/bin/node /home/node/app/dist/read_yaml_run.js -d source_dir=hydrated-configs/ --output source.yaml --input /dev/null
+  artifacts:
+    paths:
+    - source.yaml
+    expire_in: 1 hour
+
+Validate:
+  stage: validate
+  image:
+    name: gcr.io/kpt-functions/gatekeeper-validate
+    entrypoint: ["/bin/sh", "-c"]
+  script:
+  - /app/gatekeeper_validate --input source.yaml
